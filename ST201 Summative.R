@@ -12,7 +12,6 @@
 ######## SETUP ########
 
 rm(list = ls()) # clear workspace
-setwd("") # setting working directory
 gc()            # Clear memory
 cat("\f")       # Clear the console
 options(scipen = 9) # Remove scientific notation for numbers with 9 decimals or less
@@ -26,6 +25,7 @@ packages <- c("haven" # To import *.dta files
               , "glmnet"
               , "boot"
               , "leaps"
+              , "randomForest"
 )
 for (i in 1:length(packages)) {
   if (!packages[i] %in% rownames(installed.packages())) {
@@ -38,19 +38,16 @@ for (i in 1:length(packages)) {
 }
 rm(packages)
 
+install.packages("installr")
+
+library(installr)
+
+updateR()
+
 # Attaching data
 data <- read.csv("coviddata.csv")
 data <- na.omit(data)[,-1] #omit NAs and the index column
-data$Gad_score <- scale(data$Gad_score) #normalize data
 
-# try simple OLS first and obtain summary
-covid.simple.OLS <- lm(Gad_score~., covid.train)
-summary(covid.simple.OLS)
-
-#save results into a data frame
-results.ols <- data.frame(feature = names(covid.best.OLS$coefficients)[-1] # -1 to exclude intercept
-                          , ols = round(coef(covid.best.OLS)[-1], 5) # -1 to exclude intercept
-)
 
 for (i in 1:ncol(data)){
   if (!(colnames(data)[i] %in% c('Age', 'Social_support', 'Covid_risk', 'Gad_score'))){
@@ -102,8 +99,8 @@ cv_best_features <- function(reg){
     # Estimate the model
     model.cv <- glm(as.formula(formula.cv), data = covid.stepwise)
     #  Calculate MSE from CV
-    set.seed(1000)
-    mse <- cv.glm(data = covid.stepwise, glmfit = model.cv, K = 10)$delta[1]
+    set.seed(100)
+    mse <- cv.glm(data = covid.stepwise, glmfit = model.cv, K = 5)$delta[1]
     # Put MSE back into main dataframe
     cv.fit$mse[cv.fit$features == i] <- mse
   }
@@ -111,14 +108,17 @@ cv_best_features <- function(reg){
 }
 
 cv_best_features(covid.forward)
-#14
+#19
 cv_best_features(covid.backward)
-#14
+#18
 
 #set up 
-covid.best.forward <- lm(get_formula(24, covid.forward, 'Gad_score'), data=covid.stepwise)
-covid.best.backward <- lm(get_formula(24, covid.backward, 'Gad_score'), data=covid.stepwise)
+covid.best.forward <- lm(get_formula(25, covid.forward, 'Gad_score'), data=covid.stepwise)
+covid.best.backward <- lm(get_formula(22, covid.backward, 'Gad_score'), data=covid.stepwise)
 
+#Random Forest
+rf.fit <- randomForest(Gad_score ~ ., data=covid.train, ntree=1000,
+                       keep.forest=TRUE, importance=TRUE)
 
 #generate predictions
 prediction <- data.frame(Gad_score = covid.test$Gad_score)
@@ -129,13 +129,14 @@ covid.stepwise.test$Gad_score <- covid.test$Gad_score
 prediction$score.OLS <- predict(covid.best.OLS, newdata = as.data.frame(covid.test))
 prediction$score.forward <- predict(covid.best.forward, newdata = as.data.frame(covid.stepwise.test))
 prediction$score.backward <- predict(covid.best.backward, newdata = as.data.frame(covid.stepwise.test))
+prediction$score.rf <- predict(rf.fit, newdata = as.data.frame(covid.test))
 
 #Calculate MSE
-accuracy <- data.frame(model = c('OLS(nonfactor)', 'OLS', 'forward', 'backward'), MSE=NA)
-
+accuracy <- data.frame(model = c('OLS', 'forward', 'backward', 'RandomForest'), MSE=NA)
 accuracy$MSE[accuracy$model == "OLS"] <- mean((prediction$Gad_score - prediction$score.OLS)^2)
 accuracy$MSE[accuracy$model == "forward"] <- mean((prediction$Gad_score - prediction$score.forward)^2)
 accuracy$MSE[accuracy$model == "backward"] <- mean((prediction$Gad_score - prediction$score.backward)^2)
+accuracy$MSE[accuracy$model == "RandomForest"] <- mean((prediction$Gad_score - prediction$score.rf)^2)
 accuracy
 
 #-----------------------------------------------------------------------------------------
