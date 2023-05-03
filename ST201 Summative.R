@@ -38,22 +38,19 @@ for (i in 1:length(packages)) {
 }
 rm(packages)
 
-install.packages("installr")
-
-library(installr)
-
-updateR()
-
 # Attaching data
 data <- read.csv("coviddata.csv")
 data <- na.omit(data)[,-1] #omit NAs and the index column
 
-
+#save columns as factor variables
 for (i in 1:ncol(data)){
-  if (!(colnames(data)[i] %in% c('Age', 'Social_support', 'Covid_risk', 'Gad_score'))){
+  if ((colnames(data)[i] %in% c('Sex', 'Education', 'IncomeContinuity', 'HealthStatus', 'Unemployed', 'Student',
+                                 ''))){
     data[, colnames(data)[i]] <- as.factor(data[, colnames(data)[i]])
   }
 }
+
+
 
 #train-test
 set.seed(1000)
@@ -107,14 +104,12 @@ cv_best_features <- function(reg){
   return(cv.fit[which.min(cv.fit$mse),]$features)
 }
 
-cv_best_features(covid.forward)
-#19
-cv_best_features(covid.backward)
-#18
+n_features_forward <- cv_best_features(covid.forward)
+n_features_backward <- cv_best_features(covid.backward)
 
 #set up 
-covid.best.forward <- lm(get_formula(25, covid.forward, 'Gad_score'), data=covid.stepwise)
-covid.best.backward <- lm(get_formula(22, covid.backward, 'Gad_score'), data=covid.stepwise)
+covid.best.forward <- lm(get_formula(n_features_forward, covid.forward, 'Gad_score'), data=covid.stepwise)
+covid.best.backward <- lm(get_formula(n_features_backward, covid.backward, 'Gad_score'), data=covid.stepwise)
 
 #Random Forest
 rf.fit <- randomForest(Gad_score ~ ., data=covid.train, ntree=1000,
@@ -138,6 +133,9 @@ accuracy$MSE[accuracy$model == "forward"] <- mean((prediction$Gad_score - predic
 accuracy$MSE[accuracy$model == "backward"] <- mean((prediction$Gad_score - prediction$score.backward)^2)
 accuracy$MSE[accuracy$model == "RandomForest"] <- mean((prediction$Gad_score - prediction$score.rf)^2)
 accuracy
+
+
+
 
 #-----------------------------------------------------------------------------------------
 
